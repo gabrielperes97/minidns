@@ -2,7 +2,6 @@
 
 import socket
 import messages
-import pdb;
 
 #TODO: Colocar isso como parametro passado no terminal
 BIND_IP = "0.0.0.0"
@@ -17,7 +16,6 @@ try:
         data, addr = sock.recvfrom(1024)
         req = messages.Request.from_bytes(data)
         print ("Received from ", addr, " this: \n", req)
-        pdb.set_trace()
 except Exception as e:
     raise
 finally:
