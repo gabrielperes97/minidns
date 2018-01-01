@@ -54,6 +54,11 @@ def decode_addr(bytes, offset, length):
     addr = separator.join(addr)
     return addr, length
 
+def encode_pointer(offset):
+    bin = "{0:{fill}16b}".format(offset, fill="0")
+    bin = "11"+bin[2:]
+    return encode_int(int(bin, 2),2)
+
 def encode_int(i, length):
     return i.to_bytes(length, byteorder='big')
 
@@ -90,8 +95,8 @@ def encode_addr(addr):
         if(addr_l == 1):
             raise Exception("Unknown separator on " + addr)
     for p in addr_l:
-        b += int(p).to_bytes(2, byteorder='big')
-    return b
+        b += int(p).to_bytes(1, byteorder='big')
+    return b, len(addr_l)
 
 
 class DnsMessage(object):
@@ -137,6 +142,7 @@ class DnsMessage(object):
 
 
     def to_bytes(self):
+        urls = dict()
         data = bytes(0)
         data += encode_int(self.transaction_id,2)
         data += encode_int(self.flags,2)
@@ -144,10 +150,14 @@ class DnsMessage(object):
         data += encode_int(len(self.answers),2)
         data += encode_int(self.authority_rrs,2)
         data += encode_int(self.additional_rrs,2)
+        i = 12
         for q in self.queries:
-            data += q.to_bytes()
+            b = q.to_bytes()
+            urls[q.url] = i
+            i += len(b)
+            data += b
         for a in self.answers:
-            data += a.to_bytes()
+            data += a.to_bytes(urls.get(a.url))
         return data
 
     def __repr__(self):
@@ -237,11 +247,22 @@ class Answer(object):
 
         return answers, i-offset
 
-    def to_bytes(self):
+    def to_bytes(self, url_location=None):
         b = bytes(0)
+        if (url_location is not None):
+            b += encode_pointer(url_location)
+        else:
         b += encode_url(self.url)
         b += encode_type(self.type)
         b += encode_class(self.clas)
         b += encode_int(self.ttl, 4)
-        b += encode_addr(self.addr)
+        addr, addr_len = encode_addr(self.addr)
+        b += encode_int(addr_len, 2)
+        b += addr
         return b
+
+class CompressionTable(object):
+    """docstring for CompressionTable."""
+    def __init__(self, arg):
+        super(CompressionTable, self).__init__()
+        self.arg = arg

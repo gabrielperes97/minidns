@@ -27,7 +27,6 @@ try:
         data, addr = root_sock.recvfrom(512)
         print ("Received from ", addr, " this: \n", data)
         res = messages.DnsMessage.from_bytes(data)
-        res.queries = []
         print("Enviando resposta")
         sock.sendto(res.to_bytes(), addr_client)
 
