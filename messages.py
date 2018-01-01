@@ -1,20 +1,14 @@
-
-def verify_pointer(bytes, offset):
-    return "{0:b}".format(int.from_bytes(bytes[offset:offset+2], byteorder='big'))[0:2]=="11"
-
 def resolve_pointer(bytes, offset):
     #Dado em binário
     bin = "{0:b}".format(int.from_bytes(bytes[offset:offset+2], byteorder='big'))
     if (bin[0:2] == "11"): #é um ponteiro
-        bin[0] = "0"
-        bin[1] = "0"
+        bin = "00"+bin[2:]
         return int(bin, 2), True
     else:
         return offset, False
 
 def decode_int(bytes, offset, length):
-    i, is_pointer = resolve_pointer(bytes, offset)
-    return int.from_bytes(bytes[i:i+length], byteorder='big'), 2 if is_pointer else length
+    return int.from_bytes(bytes[offset:offset+length], byteorder='big'), length
 
 def decode_url(bytes, offset):
     i, is_pointer = resolve_pointer(bytes, offset)
@@ -24,27 +18,80 @@ def decode_url(bytes, offset):
     while (int(bytes[i]) != 0):
         k = i + int(bytes[i])+1
         url.append(bytes[i+1:k].decode("utf-8"))
+        tam += k-i
         i = k
-        tam += 1
     url = ".".join(url)
     tam += 1
     return url, 2 if is_pointer else tam
 
 def decode_class(bytes, offset):
-    clas = int.from_bytes(bytes[i:i+2], byteorder='big')
+    clas, off = decode_int(bytes, offset, 2)
     if (clas in DnsMessage.classes):
         clas = DnsMessage.classes[clas]
     else:
         raise Exception("clas "+str(clas) + " not mapped")
-    return clas, 2
+    return clas, off
 
 def decode_type(bytes, offset):
-    typ = int.from_bytes(bytes[i:i+2], byteorder='big')
+    typ, off = decode_int(bytes, offset, 2)
     if (typ in DnsMessage.types):
         typ = DnsMessage.types[typ]
     else:
         raise Exception("type "+str(typ) + " not mapped")
-    return typ, 2
+    return typ, off
+
+def decode_addr(bytes, offset, length):
+    addr = []
+    i = offset
+    for k in range(length):
+        addr.append(str(decode_int(bytes, i, 1)[0]))
+        i += 1
+    separator = ""
+    if (length == 4):
+        separator = "."
+    else:
+        separator = ":"
+    addr = separator.join(addr)
+    return addr, length
+
+def encode_int(i, length):
+    return i.to_bytes(length, byteorder='big')
+
+def encode_url(url):
+    b = bytes(0)
+    for s in url.split("."):
+        b += encode_int(len(s), 1)
+        b += s.encode("utf-8")
+    b += encode_int(0, 1)
+    return b
+
+def encode_class(clas):
+    b = bytes(0)
+    if (clas in DnsMessage.classes_r):
+        b += encode_int(DnsMessage.classes_r[clas], 2)
+    else:
+        raise Exception("Class "+str(clas) + " not mapped")
+    return b
+
+def encode_type(typ):
+    b = bytes(0)
+    if (typ in DnsMessage.types_r):
+        b += encode_int(DnsMessage.types_r[typ], 2)
+    else:
+        raise Exception("type "+str(typ) + " not mapped")
+    return b
+
+def encode_addr(addr):
+    b = bytes(0)
+
+    addr_l = addr.split(".")
+    if (addr_l == 1):
+        addr_l = addr.split(":")
+        if(addr_l == 1):
+            raise Exception("Unknown separator on " + addr)
+    for p in addr_l:
+        b += int(p).to_bytes(2, byteorder='big')
+    return b
 
 
 class DnsMessage(object):
@@ -64,10 +111,8 @@ class DnsMessage(object):
         self.flags = flags
 
         self.queries = queries
-        self.questions = len(queries)
 
         self.answers = answers
-        self.answer_rrs = len(answers)
 
         self.authorities = authorities
         self.authority_rrs = len(authorities)
@@ -78,25 +123,27 @@ class DnsMessage(object):
 
     @staticmethod
     def from_bytes(bytes):
-        transaction_id = int.from_bytes(bytes[0:2], byteorder='big')
-        flags = int.from_bytes(bytes[2:4], byteorder='big')
-        questions = int.from_bytes(bytes[4:6], byteorder='big')
-        answer_rrs = int.from_bytes(bytes[6:8], byteorder='big')
-        authority_rrs = int.from_bytes(bytes[8:10], byteorder='big')
-        additional_rrs = int.from_bytes(bytes[10:12], byteorder='big')
-        queries, piece = Query.from_bytes(bytes[12:], questions)
-        answers, pieces = Answer.from_bytes(piece, answer_rrs)
+        transaction_id, off = decode_int(bytes, 0, 2)
+        flags, off = decode_int(bytes, 2, 2)
+        questions, off = decode_int(bytes, 4, 2)
+        answer_rrs, off = decode_int(bytes, 6, 2)
+        authority_rrs, off = decode_int(bytes, 8, 2)
+        additional_rrs, off = decode_int(bytes, 10, 2)
+        queries, off = Query.from_bytes(bytes, 12, questions)
+        i = 12 + off
+        answers, off = Answer.from_bytes(bytes, i, answer_rrs)
+        i += off
         return DnsMessage(transaction_id, flags, queries, answers)
 
 
     def to_bytes(self):
         data = bytes(0)
-        data += self.transaction_id.to_bytes(2, byteorder='big')
-        data += self.flags.to_bytes(2, byteorder='big')
-        data += self.questions.to_bytes(2, byteorder='big')
-        data += self.answer_rrs.to_bytes(2, byteorder='big')
-        data += self.authority_rrs.to_bytes(2, byteorder='big')
-        data += self.additional_rrs.to_bytes(2, byteorder='big')
+        data += encode_int(self.transaction_id,2)
+        data += encode_int(self.flags,2)
+        data += encode_int(len(self.queries),2)
+        data += encode_int(len(self.answers),2)
+        data += encode_int(self.authority_rrs,2)
+        data += encode_int(self.additional_rrs,2)
         for q in self.queries:
             data += q.to_bytes()
         for a in self.answers:
@@ -107,8 +154,8 @@ class DnsMessage(object):
         s = ""
         s += "transaction_id = " + str(self.transaction_id) + "\n"
         s += "flags = " + str(self.flags) + "\n"
-        s += "questions = " + str(self.questions) + "\n"
-        s += "answer_rrs = " + str(self.answer_rrs) + "\n"
+        s += "questions = " + str(len(self.queries)) + "\n"
+        s += "answer_rrs = " + str(len(self.answers)) + "\n"
         s += "authority_rrs = " + str(self.authority_rrs) + "\n"
         s += "additional_rrs = " + str(self.additional_rrs) + "\n"
         for q in self.queries:
@@ -126,47 +173,24 @@ class Query(object):
         return self.url.split(".")
 
     @staticmethod
-    def from_bytes(bytes, questions):
+    def from_bytes(bytes, offset, questions):
         queries = []
-        i = 0
+        i = offset
         for j in range(0,questions):
-            url = []
-            while (int(bytes[i]) != 0):
-                k = i + int(bytes[i])+1
-                url.append(bytes[i+1:k].decode("utf-8"))
-                i = k
-            url = ".".join(url)
-            i += 1
-            typ = int.from_bytes(bytes[i:i+2], byteorder='big')
-            if (typ in DnsMessage.types):
-                typ = DnsMessage.types[typ]
-            else:
-                raise Exception("type "+str(typ) + " not mapped")
-            i += 2
-            clas = int.from_bytes(bytes[i:i+2], byteorder='big')
-            if (clas in DnsMessage.classes):
-                clas = DnsMessage.classes[clas]
-            else:
-                raise Exception("clas "+str(clas) + " not mapped")
-            i += 2
+            url, off = decode_url(bytes, i)
+            i += off
+            typ, off = decode_type(bytes, i)
+            i += off
+            clas, off = decode_class(bytes, i)
+            i += off
             queries.append(Query(url, typ, clas))
-        return queries, bytes[i+1:]
+        return queries, i-offset
 
     def to_bytes(self):
         b = bytes(0)
-        for s in self.url.split("."):
-            b += len(s).to_bytes(1, byteorder='big')
-            b += s.encode("utf-8")
-        b += (0).to_bytes(1, byteorder='big')
-
-        if (self.type in DnsMessage.types_r):
-            b += DnsMessage.types_r[self.type].to_bytes(2, byteorder='big')
-        else:
-            raise Exception("type "+str(self.type) + " not mapped")
-        if (self.clas in DnsMessage.classes_r):
-            b += DnsMessage.classes_r[self.clas].to_bytes(2, byteorder='big')
-        else:
-            raise Exception("class "+str(self.clas) + " not mapped")
+        b += encode_url(self.url)
+        b += encode_type(self.type)
+        b += encode_class(self.clas)
         return b
 
     def __repr__(self):
@@ -187,71 +211,37 @@ class Answer(object):
         self.addr = addr
 
     @staticmethod
-    def from_bytes(bytes, n_answers):
+    def from_bytes(bytes, offset, n_answers):
         answers = []
-        i = 0
-        for i in range(n_answers):
-            url = []
-            while (int(bytes[i]) != 0):
-                k = i + int(bytes[i])+1
-                url.append(bytes[i+1:k].decode("utf-8"))
-                i = k
-            url = ".".join(url)
-            i += 1
-            typ = int.from_bytes(bytes[i:i+2], byteorder='big')
-            if (typ in DnsMessage.types):
-                typ = DnsMessage.types[typ]
-            else:
-                raise Exception("type "+str(typ) + " not mapped")
-            i += 2
-            clas = int.from_bytes(bytes[i:i+2], byteorder='big')
-            if (clas in DnsMessage.classes):
-                clas = DnsMessage.classes[clas]
-            else:
-                raise Exception("clas "+str(clas) + " not mapped")
-            i += 2
+        i = offset
+        for j in range(n_answers):
+            url, off = decode_url(bytes, i)
+            i += off
 
-            ttl = int.from_bytes(bytes[i:i+4], byteorder='big')
-            i += 4
+            typ, off = decode_type(bytes, i)
+            i += off
 
-            addr_len = int.from_bytes(bytes[i:i+2], byteorder='big')
-            i += 2
+            clas, off = decode_class(bytes, i)
+            i += off
 
-            addr = []
-            for i in range(addr_len):
-                addr.append(str(int.from_bytes(bytes[i:i+1], byteorder='big')))
-                i += 1
-            addr = ".".join(addr)
+            ttl, off = decode_int(bytes, i, 4)
+            i += off
+
+            addr_len, off = decode_int(bytes, i, 2)
+            i += off
+
+            addr, off = decode_addr(bytes, i, addr_len)
+            i += off
 
             answers.append(Answer(url, typ, clas, ttl, addr))
 
-        return answers, bytes[i:]
+        return answers, i-offset
 
-        def to_bytes(self):
-            b = bytes(0)
-            for s in self.url.split("."):
-                b += len(s).to_bytes(1, byteorder='big')
-                b += s.encode("utf-8")
-            b += (0).to_bytes(1, byteorder='big')
-
-            if (self.type in DnsMessage.types_r):
-                b += DnsMessage.types_r[self.type].to_bytes(2, byteorder='big')
-            else:
-                raise Exception("type "+str(self.type) + " not mapped")
-            if (self.clas in DnsMessage.classes_r):
-                b += DnsMessage.classes_r[self.clas].to_bytes(2, byteorder='big')
-            else:
-                raise Exception("class "+str(self.clas) + " not mapped")
-            b += self.ttl.to_bytes(4, byteorder='big')
-
-            if (len(addr = self.addr.split(".")) > 1):
-                pass
-            elif (len(addr = self.addr.split(":")) > 1):
-                pass
-            else:
-                raise Exception("Unknown separator on " + self.addr)
-
-            for p in addr:
-                b += p.to_bytes(2, byteorder='big')
-
-            return b
+    def to_bytes(self):
+        b = bytes(0)
+        b += encode_url(self.url)
+        b += encode_type(self.type)
+        b += encode_class(self.clas)
+        b += encode_int(self.ttl, 4)
+        b += encode_addr(self.addr)
+        return b

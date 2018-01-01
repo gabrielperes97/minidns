@@ -19,16 +19,18 @@ root_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 try:
     while True:
-        data, addr = sock.recvfrom(512)
+        data, addr_client = sock.recvfrom(512)
         req = messages.DnsMessage.from_bytes(data)
-        print ("Received from ", addr, " this: \n", req)
-
+        print ("Received from ", addr_client, " this: \n", req)
         print("Consultando à ", ROOT_SERVER)
         root_sock.sendto(data, (ROOT_SERVER, ROOT_PORT))
         data, addr = root_sock.recvfrom(512)
         print ("Received from ", addr, " this: \n", data)
         res = messages.DnsMessage.from_bytes(data)
-        import pdb; pdb.set_trace()
+        res.queries = []
+        print("Enviando resposta")
+        sock.sendto(res.to_bytes(), addr_client)
+
 except Exception as e:
     raise
 finally:
