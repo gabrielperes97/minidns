@@ -1,3 +1,5 @@
+import random
+
 def resolve_pointer(bytes, offset):
     #Dado em binário
     bin = "{0:16b}".format(int.from_bytes(bytes[offset:offset+2], byteorder='big'))
@@ -77,8 +79,9 @@ def encode_int(i, length):
 def encode_url(url):
     b = bytes(0)
     for s in url.split("."):
-        b += encode_int(len(s), 1)
-        b += s.encode("utf-8")
+        if (s != ""):
+            b += encode_int(len(s), 1)
+            b += s.encode("utf-8")
     b += encode_int(0, 1)
     return b
 
@@ -124,12 +127,12 @@ class DnsMessage(object):
     classes_r = dict()
     for key, item in classes.items():
         classes_r[item] = key
-    types = {1:"A", 2:"NS", 28:"AAAA"}
+    types = {1:"A", 2:"NS", 5:"CNAME", 6:"SOA", 28:"AAAA"}
     types_r = dict()
     for key, item in types.items():
         types_r[item] = key
 
-    def __init__(self, transaction_id, flags=256, queries=[], answers=[], authorities=[], additionals=[]):
+    def __init__(self, transaction_id=random.randint(0,65535), flags=256, queries=[], answers=[], authorities=[], additionals=[]):
         super(DnsMessage, self).__init__()
         self.transaction_id = transaction_id
         self.flags = flags
@@ -189,14 +192,16 @@ class DnsMessage(object):
             data += a.to_bytes()
         return data
 
+    def add_query(self, query):
+        if (type(query) is Query):
+            self.queries.append(query)
+        else:
+            raise Exception("Must be a Query class")
+
     def __repr__(self):
-        s = ""
-        s += "transaction_id = " + str(self.transaction_id) + "\n"
+        s = "Packet "
+        s += str(self.transaction_id) + " "
         s += "flags = " + str(self.flags) + "\n"
-        s += "questions = " + str(len(self.queries)) + "\n"
-        s += "answer_rrs = " + str(len(self.answers)) + "\n"
-        s += "authority_rrs = " + str(len(self.authorities)) + "\n"
-        s += "additional_rrs = " + str(len(self.additionals)) + "\n"
         for q in self.queries:
             s += str(q)
         for a in self.answers:
@@ -210,7 +215,7 @@ class DnsMessage(object):
 
 class Query(object):
 
-    def __init__(self, url, typ, clas):
+    def __init__(self, url, typ="A", clas="IN"):
         self.url = url
         self.type = typ
         self.clas = clas
@@ -309,7 +314,8 @@ class Answer(object):
 
 class Authority(object):
     """docstring for authorities."""
-    def __init__(self, name, typ, clas, ttl, name_server):
+
+    def __init__(self, name=None, typ=None, clas=None, ttl=None, name_server=None):
         super(Authority, self).__init__()
         self.name = name
         self.type = typ
@@ -317,29 +323,58 @@ class Authority(object):
         self.ttl = ttl
         self.name_server = name_server
 
+        self.responsible = None
+        self.serial = None
+        self.refresh = None
+        self.retry = None
+        self.expire = None
+        self.minimum = None
+
     @staticmethod
     def from_bytes(bytes, offset, n_authorities):
         authorities = []
         i = offset
         for j in range(n_authorities):
-            name, off = decode_url(bytes, i)
+            authority = Authority()
+
+            authority.name, off = decode_url(bytes, i)
             i += off
 
-            typ, off = decode_type(bytes, i)
+            authority.type, off = decode_type(bytes, i)
             i += off
 
-            clas, off = decode_class(bytes, i)
+            authority.clas, off = decode_class(bytes, i)
             i += off
 
-            ttl, off = decode_int(bytes, i, 4)
+            authority.ttl, off = decode_int(bytes, i, 4)
             i += off
 
-            lenght, off = decode_int(bytes, i, 2) #not used
+            authority.lenght, off = decode_int(bytes, i, 2) #not used
             i += off
 
-            name_server, off = decode_url(bytes, i)
+            authority.name_server, off = decode_url(bytes, i)
             i += off
-            authorities.append(Authority(name, typ, clas, ttl, name_server))
+
+            if (authority.type == "SOA"):
+                authority.responsible, off = decode_url(bytes, i)
+                i += off
+
+                authority.serial, off = decode_int(bytes, i, 4)
+                i += off
+
+                authority.refresh, off = decode_int(bytes, i, 4)
+                i += off
+
+                authority.retry, off = decode_int(bytes, i, 4)
+                i += off
+
+                authority.expire, off = decode_int(bytes, i, 4)
+                i += off
+
+                authority.minimum, off = decode_int(bytes, i, 4)
+                i += off
+
+            authorities.append(authority)
         return authorities, i-offset
 
     def to_bytes(self, url_location=None):
@@ -350,6 +385,13 @@ class Authority(object):
         b += encode_int(self.ttl, 4)
         b += encode_int(len(self.name_server)+2, 2) #Tam do NS
         b += encode_url(self.name_server)
+        if (self.type == "SOA"):
+            b += encode_url(self.responsible)
+            b += encode_int(self.serial, 4)
+            b += encode_int(self.refresh, 4)
+            b += encode_int(self.retry, 4)
+            b += encode_int(self.expire, 4)
+            b += encode_int(self.minimum, 4)
         return b
 
     def __repr__(self):
