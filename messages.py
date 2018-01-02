@@ -1,6 +1,6 @@
 def resolve_pointer(bytes, offset):
     #Dado em binário
-    bin = "{0:b}".format(int.from_bytes(bytes[offset:offset+2], byteorder='big'))
+    bin = "{0:16b}".format(int.from_bytes(bytes[offset:offset+2], byteorder='big'))
     if (bin[0:2] == "11"): #é um ponteiro
         bin = "00"+bin[2:]
         return int(bin, 2), True
@@ -10,19 +10,26 @@ def resolve_pointer(bytes, offset):
 def decode_int(bytes, offset, length):
     return int.from_bytes(bytes[offset:offset+length], byteorder='big'), length
 
-def decode_url(bytes, offset):
-    i, is_pointer = resolve_pointer(bytes, offset)
-    tam = 0
 
+def decode_url(bytes, offset):
     url = []
-    while (int(bytes[i]) != 0):
-        k = i + int(bytes[i])+1
-        url.append(bytes[i+1:k].decode("utf-8"))
-        tam += k-i
-        i = k
+    i = offset
+    tam = 0
+    while(int(bytes[i]) != 0):
+        k, is_pointer = resolve_pointer(bytes, i)
+        if (is_pointer):
+            tam += 2
+            url += (decode_url(bytes, k)[0]).split(".")
+            tam -= 1 #Gambiarra pra alinhar com o zero do final quando não tem ponteiro
+            break
+        else:
+            length = int(bytes[k])
+            url.append(bytes[k+1:k+1+length].decode("utf-8"))
+            i += 1+length
+            tam += length+1
     url = ".".join(url)
     tam += 1
-    return url, 2 if is_pointer else tam
+    return url, tam
 
 def decode_class(bytes, offset):
     clas, off = decode_int(bytes, offset, 2)
@@ -43,15 +50,20 @@ def decode_type(bytes, offset):
 def decode_addr(bytes, offset, length):
     addr = []
     i = offset
-    for k in range(length):
-        addr.append(str(decode_int(bytes, i, 1)[0]))
-        i += 1
-    separator = ""
     if (length == 4):
-        separator = "."
+        for k in range(length):
+            addr.append(str(decode_int(bytes, i, 1)[0]))
+            i += 1
+        addr = ".".join(addr)
+    elif (length == 16):
+        k = 0
+        while (k < length):
+            addr.append(bytes[offset+k:offset+k+2].hex())
+            k += 2
+        addr = ":".join(addr)
     else:
-        separator = ":"
-    addr = separator.join(addr)
+        raise Exception("Cannot decode address with length "+str(lenght))
+
     return addr, length
 
 def encode_pointer(offset):
@@ -88,15 +100,22 @@ def encode_type(typ):
 
 def encode_addr(addr):
     b = bytes(0)
+    length=0
 
     addr_l = addr.split(".")
-    if (addr_l == 1):
+    if (len(addr_l) == 4):
+        length = 4
+        for p in addr_l:
+            b += int(p).to_bytes(1, byteorder='big')
+    else:
         addr_l = addr.split(":")
-        if(addr_l == 1):
+        if (len(addr_l) == 8):
+            length = 16
+            for p in addr_l:
+                b += bytes.fromhex(p)
+        else:
             raise Exception("Unknown separator on " + addr)
-    for p in addr_l:
-        b += int(p).to_bytes(1, byteorder='big')
-    return b, len(addr_l)
+    return b, length
 
 
 class DnsMessage(object):
@@ -120,10 +139,8 @@ class DnsMessage(object):
         self.answers = answers
 
         self.authorities = authorities
-        self.authority_rrs = len(authorities)
 
         self.additionals = additionals
-        self.additional_rrs = len(additionals)
 
 
     @staticmethod
@@ -138,7 +155,11 @@ class DnsMessage(object):
         i = 12 + off
         answers, off = Answer.from_bytes(bytes, i, answer_rrs)
         i += off
-        return DnsMessage(transaction_id, flags, queries, answers)
+        authorities, off = Authority.from_bytes(bytes, i, authority_rrs)
+        i += off
+        additionals, off = Additional.from_bytes(bytes, i, additional_rrs)
+        i += off
+        return DnsMessage(transaction_id, flags, queries, answers, authorities, additionals)
 
 
     def to_bytes(self):
@@ -148,16 +169,24 @@ class DnsMessage(object):
         data += encode_int(self.flags,2)
         data += encode_int(len(self.queries),2)
         data += encode_int(len(self.answers),2)
-        data += encode_int(self.authority_rrs,2)
-        data += encode_int(self.additional_rrs,2)
+        data += encode_int(len(self.authorities),2)
+        data += encode_int(len(self.additionals),2)
         i = 12
+
         for q in self.queries:
             b = q.to_bytes()
             urls[q.url] = i
             i += len(b)
             data += b
+
         for a in self.answers:
             data += a.to_bytes(urls.get(a.url))
+
+        for a in self.authorities:
+            data += a.to_bytes()
+
+        for a in self.additionals:
+            data += a.to_bytes()
         return data
 
     def __repr__(self):
@@ -166,10 +195,17 @@ class DnsMessage(object):
         s += "flags = " + str(self.flags) + "\n"
         s += "questions = " + str(len(self.queries)) + "\n"
         s += "answer_rrs = " + str(len(self.answers)) + "\n"
-        s += "authority_rrs = " + str(self.authority_rrs) + "\n"
-        s += "additional_rrs = " + str(self.additional_rrs) + "\n"
+        s += "authority_rrs = " + str(len(self.authorities)) + "\n"
+        s += "additional_rrs = " + str(len(self.additionals)) + "\n"
         for q in self.queries:
             s += str(q)
+        for a in self.answers:
+            s += str(a)
+        for a in self.authorities:
+            s += str(a)
+        for a in self.additionals:
+            s += str(a)
+
         return s
 
 class Query(object):
@@ -208,6 +244,7 @@ class Query(object):
         s += "Query: " + self.url
         s += " " + str(self.type)
         s += " " + str(self.clas)
+        s += "\n"
         return s
 
 class Answer(object):
@@ -252,7 +289,7 @@ class Answer(object):
         if (url_location is not None):
             b += encode_pointer(url_location)
         else:
-        b += encode_url(self.url)
+            b += encode_url(self.url)
         b += encode_type(self.type)
         b += encode_class(self.clas)
         b += encode_int(self.ttl, 4)
@@ -261,8 +298,118 @@ class Answer(object):
         b += addr
         return b
 
-class CompressionTable(object):
-    """docstring for CompressionTable."""
-    def __init__(self, arg):
-        super(CompressionTable, self).__init__()
-        self.arg = arg
+    def __repr__(self):
+        s = ""
+        s += "Answer: " + self.url
+        s += " " + str(self.type)
+        s += " " + str(self.clas)
+        s += ": " + str(self.addr)
+        s += "\n"
+        return s
+
+class Authority(object):
+    """docstring for authorities."""
+    def __init__(self, name, typ, clas, ttl, name_server):
+        super(Authority, self).__init__()
+        self.name = name
+        self.type = typ
+        self.clas = clas
+        self.ttl = ttl
+        self.name_server = name_server
+
+    @staticmethod
+    def from_bytes(bytes, offset, n_authorities):
+        authorities = []
+        i = offset
+        for j in range(n_authorities):
+            name, off = decode_url(bytes, i)
+            i += off
+
+            typ, off = decode_type(bytes, i)
+            i += off
+
+            clas, off = decode_class(bytes, i)
+            i += off
+
+            ttl, off = decode_int(bytes, i, 4)
+            i += off
+
+            lenght, off = decode_int(bytes, i, 2) #not used
+            i += off
+
+            name_server, off = decode_url(bytes, i)
+            i += off
+            authorities.append(Authority(name, typ, clas, ttl, name_server))
+        return authorities, i-offset
+
+    def to_bytes(self, url_location=None):
+        b = bytes(0)
+        b += encode_url(self.name)
+        b += encode_type(self.type)
+        b += encode_class(self.clas)
+        b += encode_int(self.ttl, 4)
+        b += encode_int(len(self.name_server)+2, 2) #Tam do NS
+        b += encode_url(self.name_server)
+        return b
+
+    def __repr__(self):
+        s = ""
+        s += "Authority: " + self.name
+        s += " " + str(self.type)
+        s += " " + str(self.clas)
+        s += ": " + str(self.name_server) + "\n"
+        return s
+
+class Additional(object):
+    """docstring for Additional."""
+    def __init__(self, name, typ, clas, ttl, addr):
+        super(Additional, self).__init__()
+        self.name = name
+        self.type = typ
+        self.clas = clas
+        self.ttl = ttl
+        self.addr = addr
+
+    @staticmethod
+    def from_bytes(bytes, offset, n_additionals):
+        additionals = []
+        i = offset
+        for j in range(n_additionals):
+            name, off = decode_url(bytes, i)
+            i += off
+
+            typ, off = decode_type(bytes, i)
+            i += off
+
+            clas, off = decode_class(bytes, i)
+            i += off
+
+            ttl, off = decode_int(bytes, i, 4)
+            i += off
+
+            lenght, off = decode_int(bytes, i, 2) #not used
+            i += off
+
+            addr, off = decode_addr(bytes, i, lenght)
+            i += off
+            additionals.append(Additional(name, typ, clas, ttl, addr))
+        return additionals, i-offset
+
+    def to_bytes(self, url_location=None):
+        b = bytes(0)
+        b += encode_url(self.name)
+        b += encode_type(self.type)
+        b += encode_class(self.clas)
+        b += encode_int(self.ttl, 4)
+        addr, addr_len = encode_addr(self.addr)
+        b += encode_int(addr_len, 2)
+        b += addr
+        return b
+
+    def __repr__(self):
+        s = ""
+        s += "Additional: " + self.name
+        s += " " + str(self.type)
+        s += " " + str(self.clas)
+        s += ": " + str(self.addr) + "\n"
+        return s
