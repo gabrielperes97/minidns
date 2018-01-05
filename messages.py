@@ -213,6 +213,51 @@ class DnsMessage(object):
 
         return s
 
+class Flags(object):
+    """docstring for Flags."""
+    def __init__(self, response=False, opcode=0, authoritative=False, truncated=False, recursion_desired=True, recursion_available=False, answer_auth=False, acc_n_auth=False, reply_code=0):
+        super(Flags, self).__init__()
+        self.response = response
+        self.opcode = opcode
+        self.authoritative = authoritative
+        self.truncated = truncated
+        self.recursion_desired = recursion_desired
+        self.recursion_available = recursion_available
+        self.z = 0
+        self.answer_auth = answer_auth
+        self.acc_n_auth = acc_n_auth
+        self.reply_code = reply_code
+
+    @staticmethod
+    def get_standard_query():
+        return Flags()
+
+    @staticmethod
+    def get_standard_response():
+        return Flags(response=True, opcode=0, authoritative=False,truncated=False,
+            recursion_desired=True, recursion_available=True, answer_auth=False,
+            acc_n_auth=False, reply_code=0)
+
+    def to_int(self):
+        i = ""
+        i += str(int(self.response))
+        i += "{0:{fill}4b}".format(self.opcode, fill='0')
+        i += str(int(self.authoritative))
+        i += str(int(self.truncated))
+        i += str(int(self.recursion_desired))
+        i += str(int(self.recursion_available))
+        i += str(int(self.z))
+        i += str(int(self.answer_auth))
+        i += str(int(self.acc_n_auth))
+        i += "{0:{fill}4b}".format(self.reply_code, fill='0')
+        return int(i, 2)
+
+    def from_int(flags):
+        i = "{0:{fill}16b}".format(flags, fill='0')[::-1]
+        return Flags(response=bool(int(i[15])), opcode=int(i[11:15], 2), authoritative=bool(int(i[10])), truncated=bool(int(i[9])),
+            recursion_desired=bool(int(i[8])), recursion_available=bool(int(i[7])), answer_auth=bool(int(i[5])),
+            acc_n_auth=bool(int(i[4])), reply_code=int(i[0:4], 2))
+
 class Query(object):
 
     def __init__(self, url, typ="A", clas="IN"):

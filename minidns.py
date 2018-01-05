@@ -51,6 +51,8 @@ def recursive_query(query, server, query_sock):
                     server_query.add_query(Query(a.name_server, "A"))
                     new_server = recursive_query(server_query, ROOT_SERVER, query_sock)
                     print(new_server)
+                    if len(res.authorities) == 1 and res.authorities[0].clas == "SOA":
+                        return res
                     if (new_server is not None):
                         return recursive_query(query, new_server.answers[0].addr, query_sock)
     return None
