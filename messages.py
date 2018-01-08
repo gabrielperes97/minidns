@@ -217,16 +217,16 @@ class Flags(object):
     """docstring for Flags."""
     def __init__(self, response=False, opcode=0, authoritative=False, truncated=False, recursion_desired=True, recursion_available=False, answer_auth=False, acc_n_auth=False, reply_code=0):
         super(Flags, self).__init__()
-        self.response = response
-        self.opcode = opcode
-        self.authoritative = authoritative
-        self.truncated = truncated
-        self.recursion_desired = recursion_desired
-        self.recursion_available = recursion_available
-        self.z = 0
+        self.response = response    #False = Query, True = Response
+        self.opcode = opcode        #0 = Default, 1 = Inverse
+        self.authoritative = authoritative #is a Authoritative response
+        self.truncated = truncated  #Is a truncated message
+        self.recursion_desired = recursion_desired #Recusion is desired
+        self.recursion_available = recursion_available #Recursion is available
+        self.z = 0 #Reserved
         self.answer_auth = answer_auth
         self.acc_n_auth = acc_n_auth
-        self.reply_code = reply_code
+        self.reply_code = reply_code #0 = No error, 1=Query format error,  2 = Server fail, 3 = Name not exists
 
     @staticmethod
     def get_standard_query():
