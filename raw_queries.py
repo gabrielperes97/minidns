@@ -5,6 +5,7 @@ import os
 
 PORT = 53
 
+# query type server
 req = messages.DnsMessage()
 req.add_query(messages.Query(sys.argv[1], sys.argv[2]))
 

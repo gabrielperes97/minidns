@@ -64,7 +64,7 @@ def decode_addr(bytes, offset, length):
             k += 2
         addr = ":".join(addr)
     else:
-        raise Exception("Cannot decode address with length "+str(lenght))
+        raise Exception("Cannot decode address with length "+str(length))
 
     return addr, length
 
@@ -120,6 +120,81 @@ def encode_addr(addr):
             raise Exception("Unknown separator on " + addr)
     return b, length
 
+class Flags(object):
+    """docstring for Flags."""
+    def __init__(self, response=False, opcode=0, authoritative=False, truncated=False, recursion_desired=True, recursion_available=False, answer_auth=False, acc_n_auth=False, reply_code=0):
+        super(Flags, self).__init__()
+        self.response = response    #False = Query, True = Response
+        self.opcode = opcode        #0 = Default, 1 = Inverse
+        self.authoritative = authoritative #is a Authoritative response
+        self.truncated = truncated  #Is a truncated message
+        self.recursion_desired = recursion_desired #Recusion is desired
+        self.recursion_available = recursion_available #Recursion is available
+        self.z = 0 #Reserved
+        self.answer_auth = answer_auth
+        self.acc_n_auth = acc_n_auth
+        self.reply_code = reply_code #0 = No error, 1=Query format error,  2 = Server fail, 3 = Name not exists
+
+    @staticmethod
+    def get_standard_query():
+        return Flags()
+
+    @staticmethod
+    def get_standard_response():
+        return Flags(response=True, opcode=0, authoritative=False,truncated=False,
+            recursion_desired=True, recursion_available=True, answer_auth=False,
+            acc_n_auth=False, reply_code=0)
+
+    def to_int(self):
+        i = ""
+        i += str(int(self.response))
+        i += "{0:{fill}4b}".format(self.opcode, fill='0')
+        i += str(int(self.authoritative))
+        i += str(int(self.truncated))
+        i += str(int(self.recursion_desired))
+        i += str(int(self.recursion_available))
+        i += str(int(self.z))
+        i += str(int(self.answer_auth))
+        i += str(int(self.acc_n_auth))
+        i += "{0:{fill}4b}".format(self.reply_code, fill='0')
+        return int(i, 2)
+
+    @staticmethod
+    def from_int(flags):
+        i = "{0:{fill}16b}".format(flags, fill='0')[::-1]
+        return Flags(response=bool(int(i[15])), opcode=int(i[11:15], 2), authoritative=bool(int(i[10])), truncated=bool(int(i[9])),
+            recursion_desired=bool(int(i[8])), recursion_available=bool(int(i[7])), answer_auth=bool(int(i[5])),
+            acc_n_auth=bool(int(i[4])), reply_code=int(i[0:4], 2))
+
+    def __repr__(self):
+        s = "("
+        if self.response:
+            s += "response "
+        else:
+            s += "query "
+        s += str(self.opcode)
+        s += " "
+        if self.authoritative:
+            s += "authoritative "
+        if self.truncated:
+            s += "truncated "
+        if self.recursion_desired:
+            s += "recursion_desired "
+        if self.recursion_available:
+            s += "recursion_available "
+        if self.answer_auth:
+            s += "answer_auth "
+        if self.acc_n_auth:
+            s += "acc_n_auth "
+        s += str(self.reply_code)
+        s += ")"
+        return s
+
+
+
+
+
+
 
 class DnsMessage(object):
     """docstring for Request."""
@@ -132,7 +207,7 @@ class DnsMessage(object):
     for key, item in types.items():
         types_r[item] = key
 
-    def __init__(self, transaction_id=random.randint(0,65535), flags=256, queries=[], answers=[], authorities=[], additionals=[]):
+    def __init__(self, transaction_id=random.randint(0,65535), flags=Flags.get_standard_query(), queries=[], answers=[], authorities=[], additionals=[]):
         super(DnsMessage, self).__init__()
         self.transaction_id = transaction_id
         self.flags = flags
@@ -150,6 +225,7 @@ class DnsMessage(object):
     def from_bytes(bytes):
         transaction_id, off = decode_int(bytes, 0, 2)
         flags, off = decode_int(bytes, 2, 2)
+        flags = Flags.from_int(flags)
         questions, off = decode_int(bytes, 4, 2)
         answer_rrs, off = decode_int(bytes, 6, 2)
         authority_rrs, off = decode_int(bytes, 8, 2)
@@ -169,7 +245,8 @@ class DnsMessage(object):
         urls = dict()
         data = bytes(0)
         data += encode_int(self.transaction_id,2)
-        data += encode_int(self.flags,2)
+        #data += encode_int(self.flags,2)
+        data += encode_int(self.flags.to_int(),2)
         data += encode_int(len(self.queries),2)
         data += encode_int(len(self.answers),2)
         data += encode_int(len(self.authorities),2)
@@ -212,51 +289,6 @@ class DnsMessage(object):
             s += str(a)
 
         return s
-
-class Flags(object):
-    """docstring for Flags."""
-    def __init__(self, response=False, opcode=0, authoritative=False, truncated=False, recursion_desired=True, recursion_available=False, answer_auth=False, acc_n_auth=False, reply_code=0):
-        super(Flags, self).__init__()
-        self.response = response    #False = Query, True = Response
-        self.opcode = opcode        #0 = Default, 1 = Inverse
-        self.authoritative = authoritative #is a Authoritative response
-        self.truncated = truncated  #Is a truncated message
-        self.recursion_desired = recursion_desired #Recusion is desired
-        self.recursion_available = recursion_available #Recursion is available
-        self.z = 0 #Reserved
-        self.answer_auth = answer_auth
-        self.acc_n_auth = acc_n_auth
-        self.reply_code = reply_code #0 = No error, 1=Query format error,  2 = Server fail, 3 = Name not exists
-
-    @staticmethod
-    def get_standard_query():
-        return Flags()
-
-    @staticmethod
-    def get_standard_response():
-        return Flags(response=True, opcode=0, authoritative=False,truncated=False,
-            recursion_desired=True, recursion_available=True, answer_auth=False,
-            acc_n_auth=False, reply_code=0)
-
-    def to_int(self):
-        i = ""
-        i += str(int(self.response))
-        i += "{0:{fill}4b}".format(self.opcode, fill='0')
-        i += str(int(self.authoritative))
-        i += str(int(self.truncated))
-        i += str(int(self.recursion_desired))
-        i += str(int(self.recursion_available))
-        i += str(int(self.z))
-        i += str(int(self.answer_auth))
-        i += str(int(self.acc_n_auth))
-        i += "{0:{fill}4b}".format(self.reply_code, fill='0')
-        return int(i, 2)
-
-    def from_int(flags):
-        i = "{0:{fill}16b}".format(flags, fill='0')[::-1]
-        return Flags(response=bool(int(i[15])), opcode=int(i[11:15], 2), authoritative=bool(int(i[10])), truncated=bool(int(i[9])),
-            recursion_desired=bool(int(i[8])), recursion_available=bool(int(i[7])), answer_auth=bool(int(i[5])),
-            acc_n_auth=bool(int(i[4])), reply_code=int(i[0:4], 2))
 
 class Query(object):
 
@@ -428,7 +460,11 @@ class Authority(object):
         b += encode_type(self.type)
         b += encode_class(self.clas)
         b += encode_int(self.ttl, 4)
-        b += encode_int(len(self.name_server)+2, 2) #Tam do NS
+        len_ns = len(self.name_server)+2
+        if (self.type == "SOA"):
+            len_ns += len(self.responsible) +2
+            len_ns += 20
+        b += encode_int(len_ns, 2)
         b += encode_url(self.name_server)
         if (self.type == "SOA"):
             b += encode_url(self.responsible)
