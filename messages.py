@@ -359,8 +359,12 @@ class Answer(object):
             addr_len, off = decode_int(bytes, i, 2)
             i += off
 
-            addr, off = decode_addr(bytes, i, addr_len)
-            i += off
+            if (typ == "CNAME"):
+                addr, off = decode_url(bytes, i)
+                i += off
+            else:
+                addr, off = decode_addr(bytes, i, addr_len)
+                i += off
 
             answers.append(Answer(url, typ, clas, ttl, addr))
 
@@ -375,9 +379,13 @@ class Answer(object):
         b += encode_type(self.type)
         b += encode_class(self.clas)
         b += encode_int(self.ttl, 4)
-        addr, addr_len = encode_addr(self.addr)
-        b += encode_int(addr_len, 2)
-        b += addr
+        if self.type == "CNAME":
+            b += encode_int(len(self.addr)+2, 2)
+            b += encode_url(self.addr)
+        else:
+            addr, addr_len = encode_addr(self.addr)
+            b += encode_int(addr_len, 2)
+            b += addr
         return b
 
     def __repr__(self):
