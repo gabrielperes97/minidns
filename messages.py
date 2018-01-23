@@ -63,6 +63,8 @@ def decode_addr(bytes, offset, length):
             addr.append(bytes[offset+k:offset+k+2].hex())
             k += 2
         addr = ":".join(addr)
+    elif (length == 1):
+        addr = decode_int(bytes, offset, 1)[0]
     else:
         raise Exception("Cannot decode address with length "+str(length))
 
@@ -105,19 +107,25 @@ def encode_addr(addr):
     b = bytes(0)
     length=0
 
-    addr_l = addr.split(".")
-    if (len(addr_l) == 4):
-        length = 4
-        for p in addr_l:
-            b += int(p).to_bytes(1, byteorder='big')
-    else:
-        addr_l = addr.split(":")
-        if (len(addr_l) == 8):
-            length = 16
+    if type(addr) is str:
+        addr_l = addr.split(".")
+        if (len(addr_l) == 4):
+            length = 4
             for p in addr_l:
-                b += bytes.fromhex(p)
+                b += int(p).to_bytes(1, byteorder='big')
         else:
-            raise Exception("Unknown separator on " + addr)
+            addr_l = addr.split(":")
+            if (len(addr_l) == 8):
+                length = 16
+                for p in addr_l:
+                    b += bytes.fromhex(p)
+            else:
+                raise Exception("Unknown separator on " + addr)
+    elif type(addr) is int:
+        b += addr.to_bytes(1, byteorder='big')
+        length = 1
+    else:
+        Exception("Unknown format "+str(type(addr)))
     return b, length
 
 class Flags(object):
@@ -202,7 +210,7 @@ class DnsMessage(object):
     classes_r = dict()
     for key, item in classes.items():
         classes_r[item] = key
-    types = {1:"A", 2:"NS", 5:"CNAME", 6:"SOA", 28:"AAAA"}
+    types = {1:"A", 2:"NS", 5:"CNAME", 6:"SOA", 16:"TXT", 28:"AAAA", 60:"aluno"}
     types_r = dict()
     for key, item in types.items():
         types_r[item] = key
@@ -331,7 +339,7 @@ class Query(object):
 
 class Answer(object):
     """docstring for Answer."""
-    def __init__(self, url, typ, clas, ttl, addr):
+    def __init__(self, url="", typ="A", clas="IN", ttl=10080, addr=""):
         super(Answer, self).__init__()
         self.url = url
         self.type = typ

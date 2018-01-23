@@ -1,0 +1,27 @@
+{
+    "joao@escola.com": {
+        "faltas" : 1,
+        "ano_nasc" : 1876,
+        "nome" : "João Daniels"
+    },
+    "aristolfo@escola.com" : {
+        "faltas" : 4,
+        "ano_nasc" : 2005,
+        "nome" : "Aristolfo Hernandes"
+    },
+    "walter@escola.com" : {
+        "faltas" : 14,
+        "ano_nasc" : 1959,
+        "nome" : "Walter White"
+    },
+    "kabum@escola.com" : {
+        "faltas" : 0,
+        "ano_nasc" : 1965,
+        "nome" : "Michael Bay"
+    },
+    "woooow@escola.com" : {
+        "faltas" : 15,
+        "ano_nasc": 1977,
+        "nome" : "John Cena"
+    }
+}
