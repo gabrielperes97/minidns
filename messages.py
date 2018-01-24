@@ -133,7 +133,7 @@ class Flags(object):
     def __init__(self, response=False, opcode=0, authoritative=False, truncated=False, recursion_desired=True, recursion_available=False, answer_auth=False, acc_n_auth=False, reply_code=0):
         super(Flags, self).__init__()
         self.response = response    #False = Query, True = Response
-        self.opcode = opcode        #0 = Default, 1 = Inverse
+        self.opcode = opcode        #0 = Default, 1 = Inverse, 2 = status, 4 = Notify, 5  = Update
         self.authoritative = authoritative #is a Authoritative response
         self.truncated = truncated  #Is a truncated message
         self.recursion_desired = recursion_desired #Recusion is desired
@@ -289,12 +289,16 @@ class DnsMessage(object):
         s += "flags = " + str(self.flags) + "\n"
         for q in self.queries:
             s += str(q)
+            s += "\n"
         for a in self.answers:
             s += str(a)
+            s += "\n"
         for a in self.authorities:
             s += str(a)
+            s += "\n"
         for a in self.additionals:
             s += str(a)
+            s += "\n"
 
         return s
 
@@ -334,7 +338,6 @@ class Query(object):
         s += "Query: " + self.url
         s += " " + str(self.type)
         s += " " + str(self.clas)
-        s += "\n"
         return s
 
 class Answer(object):
@@ -402,7 +405,6 @@ class Answer(object):
         s += " " + str(self.type)
         s += " " + str(self.clas)
         s += ": " + str(self.addr)
-        s += "\n"
         return s
 
 class Authority(object):
@@ -496,7 +498,7 @@ class Authority(object):
         s += "Authority: " + self.name
         s += " " + str(self.type)
         s += " " + str(self.clas)
-        s += ": " + str(self.name_server) + "\n"
+        s += ": " + str(self.name_server)
         return s
 
 class Additional(object):
@@ -550,5 +552,5 @@ class Additional(object):
         s += "Additional: " + self.name
         s += " " + str(self.type)
         s += " " + str(self.clas)
-        s += ": " + str(self.addr) + "\n"
+        s += ": " + str(self.addr)
         return s

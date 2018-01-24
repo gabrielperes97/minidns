@@ -7,18 +7,16 @@ import json
 
 DB_FILE = "db.json"
 
-#TODO: Colocar isso como parametro passado no terminal
 BIND_IP = "0.0.0.0"
 BIND_PORT = 53
 ROOT_SERVER = "192.36.148.17"
-#ROOT_SERVER = "8.8.8.8"
 ROOT_PORT = 53
 
 """
 Teste interessantes:
 CNAME = cloud9.co
 Resolver autoridade recursivamente = ig.com.br
-Testar ṕr requisições AAAA
+Testar requisições AAAA
 """
 
 """
@@ -99,10 +97,9 @@ def recursive_query(query, server, query_sock):
             if len(res.additionals) > 0:
                 for s in res.additionals:
                     if(s.type == "A"):
-                        print("Resolving "+res.authorities[0].name+" by "+s.addr)
                         result = recursive_query(query, s.addr, query_sock)
-                        print(result)
                         if (result is not None):
+                            print("Authority for "+res.authorities[0].name+" is at "+s.addr+"("+str(result.answers[0])+")")
                             return result
 
             #Quando não tiver o Ip de uma authority e ter que resolvê-lo na mão
@@ -110,7 +107,7 @@ def recursive_query(query, server, query_sock):
                 if (len(res.authorities) == 1 and res.authorities[0].type == "SOA"):
                     return res
                 for a in res.authorities:
-                    print("Resolving a Name server "+a.name+" by "+a.name_server)
+                    #print("Resolving a Name server "+a.name+" by "+a.name_server)
                     server_query = DnsMessage(queries=[])
                     server_query.add_query(Query(a.name_server, "A"))
                     new_server = recursive_query(server_query, ROOT_SERVER, query_sock)

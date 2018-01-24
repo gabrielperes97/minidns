@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import socket
 import messages
 import sys
@@ -5,7 +7,14 @@ import os
 
 PORT = 53
 
-# query type server
+
+#uso:
+#raw_queries.py <url> <type> <server>
+#Exemplos:
+#raw_queries.py google.com.br A 127.0.0.1
+#raw_queries.py ig.com.br A ROOT
+#raw_queries.py kabum@escola.com aluno 127.0.0.1
+
 req = messages.DnsMessage()
 req.add_query(messages.Query(sys.argv[1], sys.argv[2]))
 
